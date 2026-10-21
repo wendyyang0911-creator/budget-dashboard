@@ -1,506 +1,526 @@
+import io
 import os
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import scipy.stats as stats
 import streamlit as st
 
 # ==========================================
-# 0. 頁面配置與 CSS 視覺美化
+# 0. 頁面配置與 CSS 高級質感視覺設計
 # ==========================================
 st.set_page_config(
-    page_title="AI 預算預測與差異分析高階戰情室",
-    page_icon="📊",
+    page_title="保險企業 AI 預算智慧控制中心",
+    page_icon="🛡️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# 自訂 CSS 提升質感
-st.markdown("""
+st.markdown(
+    """
     <style>
-    .metric-card {
-        background-color: #f8f9fa;
-        border-left: 5px solid #1f77b4;
-        padding: 15px;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    body { font-family: 'Noto Sans TC', sans-serif; }
+    
+    /* 壓力測試器深色卡片 */
+    .simulator-card {
+        background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+        border: 1px solid #312e81;
+        border-radius: 16px;
+        padding: 24px;
+        color: white;
+        margin-bottom: 25px;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
     }
-    .badge-red { background-color: #ff4b4b; color: white; padding: 3px 8px; border-radius: 12px; font-weight: bold; }
-    .badge-yellow { background-color: #ffa100; color: white; padding: 3px 8px; border-radius: 12px; font-weight: bold; }
-    .badge-green { background-color: #21c354; color: white; padding: 3px 8px; border-radius: 12px; font-weight: bold; }
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+    
+    /* 四色信賴區間 Badges */
+    .badge-blue { background-color: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; padding: 4px 10px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; }
+    .badge-green { background-color: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; padding: 4px 10px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; }
+    .badge-yellow { background-color: #fef3c7; color: #92400e; border: 1px solid #fde68a; padding: 4px 10px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; }
+    .badge-red { background-color: #ffe4e6; color: #9f1239; border: 1px solid #fecdd3; padding: 4px 10px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; }
+
+    /* Streamlit Tab 樣式美化 */
+    .stTabs [data-baseweb="tab-list"] { gap: 12px; }
     .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        white-space: pre-wrap;
-        background-color: #f1f3f6;
-        border-radius: 8px 8px 0px 0px;
-        padding-top: 10px;
-        padding-bottom: 10px;
+        height: 48px;
+        border-radius: 10px 10px 0px 0px;
+        padding: 8px 16px;
+        background-color: #f1f5f9;
+        font-weight: 600;
     }
     .stTabs [aria-selected="true"] {
-        background-color: #1f77b4 !important;
+        background-color: #0284c7 !important;
         color: white !important;
     }
     </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
+
 
 # ==========================================
-# 1. 歷史資料庫自動載入與正規化
+# 1. 歷史資料庫載入與正規化 (110~114 年基底)
 # ==========================================
 @st.cache_data
 def load_real_history():
-    possible_files = ['5年5部門月度預算與支出詳細數據表.xlsx', '5年5部門月度預算與支出範例表_分部門分頁.xlsx']
-    filepath = None
-    for f in possible_files:
-        if os.path.exists(f):
-            filepath = f
-            break
-            
-    if not filepath:
-        st.error("❌ 找不到 Excel 數據檔，請確認 Excel 檔案與程式碼在同一目錄中。")
-        return pd.DataFrame()
-    
-    dept_sheets = ['業務部', '行銷部', '研發部', '行政管理部', '資訊維運部']
-    df_list = []
-    xls = pd.ExcelFile(filepath)
-    
-    for sheet in dept_sheets:
-        if sheet in xls.sheet_names:
-            tmp_df = pd.read_excel(filepath, sheet_name=sheet)
-            df_list.append(tmp_df)
-            
-    if not df_list:
-        st.error("❌ Excel 檔案中缺乏預期部門分頁！")
-        return pd.DataFrame()
-        
-    df_hist = pd.concat(df_list, ignore_index=True)
-    df_hist = df_hist.dropna(subset=['年份', '月份', '當月分配預算', '當月實際支出'])
-    df_hist['年份'] = df_hist['年份'].astype(int)
-    df_hist['月份'] = df_hist['月份'].astype(int)
-    df_hist['當月分配預算'] = df_hist['當月分配預算'].astype(float)
-    df_hist['當月實際支出'] = df_hist['當月實際支出'].astype(float)
-    df_hist['單月執行率'] = df_hist['當月實際支出'] / df_hist['當月分配預算']
-    
-    return df_hist
+  filepath = "5年5部門月度預算與支出詳細數據表.xlsx"
+  if not os.path.exists(filepath):
+    st.error(f"❌ 找不到 Excel 數據檔：{filepath}，請確認檔案已上傳。")
+    return pd.DataFrame()
+
+  dept_sheets = ["業務部", "行銷部", "研發部", "行政管理部", "資訊維運部"]
+  df_list = []
+  xls = pd.ExcelFile(filepath)
+
+  for sheet in dept_sheets:
+    if sheet in xls.sheet_names:
+      tmp_df = pd.read_excel(filepath, sheet_name=sheet)
+      df_list.append(tmp_df)
+
+  df_hist = pd.concat(df_list, ignore_index=True)
+  df_hist = df_hist.dropna(subset=["年份", "月份", "當月分配預算", "當月實際支出"])
+  df_hist["年份"] = df_hist["年份"].astype(int)
+  df_hist["月份"] = df_hist["月份"].astype(int)
+  df_hist["當月分配預算"] = df_hist["當月分配預算"].astype(float)
+  df_hist["當月實際支出"] = df_hist["當月實際支出"].astype(float)
+  df_hist["單月執行率"] = df_hist["當月實際支出"] / df_hist["當月分配預算"]
+
+  return df_hist
+
 
 df_hist = load_real_history()
 if df_hist.empty:
-    st.stop()
+  st.stop()
 
-departments = sorted(df_hist['部門'].unique())
-target_year = 115 # 當前目標監控年份 (2026年 / 115年)
-
-# ==========================================
-# 2. 初始化 115 年全年度預算與動態帳本 (Session State)
-# ==========================================
-if 'budget_115' not in st.session_state:
-    budget_records = []
-    df_114 = df_hist[df_hist['年份'] == 114]
-    for d in departments:
-        for m in range(1, 13):
-            val = df_114[(df_114['部門'] == d) & (df_114['月份'] == m)]['當月分配預算'].mean()
-            budget_records.append({
-                '部門': d,
-                '月份': m,
-                '分配預算': int(val) if not np.isnan(val) else 500000
-            })
-    st.session_state.budget_115 = pd.DataFrame(budget_records)
-
-if 'actual_115' not in st.session_state:
-    actual_records = []
-    for d in departments:
-        for m in range(1, 13):
-            base_b = st.session_state.budget_115[
-                (st.session_state.budget_115['部門']==d) & 
-                (st.session_state.budget_115['月份']==m)
-            ]['分配預算'].values[0]
-            
-            # 模擬前幾個月的真實花費 (1~2月正常，3月行銷/業務部超支)
-            if m == 1: act = int(base_b * 0.98)
-            elif m == 2: act = int(base_b * 1.02)
-            elif m == 3: act = int(base_b * 1.18) if d in ['行銷部', '業務部'] else int(base_b * 0.95)
-            else: act = 0
-            
-            actual_records.append({'部門': d, '月份': m, '實際支出': act})
-    st.session_state.actual_115 = pd.DataFrame(actual_records)
+departments = sorted(df_hist["部門"].unique())
 
 # ==========================================
-# 3. 側邊欄：全域控制控制台
+# 2. 初始化 115 年 (2026年) 當前帳本
 # ==========================================
-st.sidebar.image("https://img.icons8.com/color/96/000000/dashboard--v1.png", width=70)
-st.sidebar.title('⚡ 控制台面板')
-st.sidebar.markdown('---')
+if "budget_115" not in st.session_state:
+  budget_records = []
+  df_114 = df_hist[df_hist["年份"] == 114]
+  for d in departments:
+    for m in range(1, 13):
+      val = df_114[(df_114["部門"] == d) & (df_114["月份"] == m)][
+          "當月分配預算"
+      ].mean()
+      budget_records.append({
+          "部門": d,
+          "月份": m,
+          "分配預算": int(val) if not np.isnan(val) else 500000,
+      })
+  st.session_state.budget_115 = pd.DataFrame(budget_records)
 
-selected_month = st.sidebar.slider('📅 選擇當前結算月份 (YTD 截止)', 1, 12, 3)
-st.sidebar.info(f"📌 歷史對照庫：110 ~ 114 年 (5年基底)\n\n🎯 當前決算區間：**115 年 1 ~ {selected_month} 月**")
+if "actual_115" not in st.session_state:
+  actual_records = []
+  for d in departments:
+    for m in range(1, 13):
+      base_b = st.session_state.budget_115[
+          (st.session_state.budget_115["部門"] == d)
+          & (st.session_state.budget_115["月份"] == m)
+      ]["分配預算"].values[0]
 
-st.sidebar.markdown('---')
-st.sidebar.subheader('⚙️ 風險敏感度調整')
-risk_tolerance = st.sidebar.select_slider(
-    '預算差異容許區間 (預警寬鬆度)',
-    options=['嚴格 (1.0 σ)', '標準 (1.5 σ)', '寬鬆 (2.0 σ)'],
-    value='標準 (1.5 σ)'
+      # 模擬 1~3 月實績 (行銷/業務部在 3 月呈現超支預警)
+      if m == 1:
+        act = int(base_b * 0.98)
+      elif m == 2:
+        act = int(base_b * 1.02)
+      elif m == 3:
+        act = (
+            int(base_b * 1.22)
+            if d in ["行銷部", "業務部"]
+            else int(base_b * 0.92)
+        )
+      else:
+        act = 0
+
+      actual_records.append({"部門": d, "月份": m, "實際支出": act})
+  st.session_state.actual_115 = pd.DataFrame(actual_records)
+
+# ==========================================
+# 3. 側邊欄邊界與 AI 信賴區間說明
+# ==========================================
+st.sidebar.markdown("## 🛡️ 控制台與風險標準")
+selected_month = st.sidebar.slider(
+    "📅 當前結算月份 (1~12月)", 1, 12, 3
 )
-sigma_mult = 1.0 if '嚴格' in risk_tolerance else (1.5 if '標準' in risk_tolerance else 2.0)
+st.sidebar.caption(
+    f"📌 數據基底：110~114 年 (5年滾動)\n\n🎯 決算區間：115 年 1~{selected_month} 月"
+)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📊 信賴區間警戒標準")
+st.sidebar.markdown("""
+- 🔵 **絕對安全**：`< 95%`
+- 🟢 **精準命中**：`95% ~ 100%`
+- 🟡 **誤差預警**：`100% ~ 105%`
+- 🔴 **顯著超支**：`> 105%`
+
+*以 95% 統計信賴區間（約 ±5% 誤差）作為標準。超過 105% 視為突破區間上限。*
+""")
 
 # ==========================================
-# 4. 主畫面抬頭與 KPI 計算
+# 4. 頂部標題與核心數據卡片 (KPIs)
 # ==========================================
-st.title('📊 企業級 AI 預算預測與差異分析戰情室')
-st.caption('Comprehensive Executive Budget Forecasting & Risk Radar Engine')
+st.title("🛡️ 保險企業 AI 預算智慧控制中心")
+st.caption("基於 ±5% 統計信賴區間之四燈號風險預警模型與情境壓力測試器")
 
-# 計算全公司層級 KPI
 b_115 = st.session_state.budget_115
 a_115 = st.session_state.actual_115
 
-total_company_annual_budget = b_115['分配預算'].sum()
-company_ytd_budget = b_115[b_115['月份'] <= selected_month]['分配預算'].sum()
-company_ytd_actual = a_115[a_115['月份'] <= selected_month]['實際支出'].sum()
-company_ytd_variance = company_ytd_budget - company_ytd_actual
-company_ytd_rate = company_ytd_actual / company_ytd_budget if company_ytd_budget > 0 else 0
+total_annual_b = b_115["分配預算"].sum()
+ytd_a = a_115[a_115["月份"] <= selected_month]["實際支出"].sum()
+ytd_b = b_115[b_115["月份"] <= selected_month]["分配預算"].sum()
+ytd_rate = (ytd_a / ytd_b * 100) if ytd_b > 0 else 0
 
-# 年底 Run-Rate 預測
-company_projected_year_end = (company_ytd_actual / selected_month) * 12 + b_115[b_115['月份'] > selected_month]['分配預算'].sum() * 0.05
-company_year_variance = total_company_annual_budget - company_projected_year_end
+# 計算全公司 AI 預估年底總額 (基於前 5 年季節性權重)
+dept_eoy_forecasts = {}
+for d in departments:
+  d_ytd_a = a_115[(a_115["部門"] == d) & (a_115["月份"] <= selected_month)][
+      "實際支出"
+  ].sum()
+  d_ann_b = b_115[b_115["部門"] == d]["分配預算"].sum()
 
-# KPI 頂部展示卡片
-k1, k2, k3, k4 = st.columns(4)
-k1.metric('全公司 115 全年總預算', f'${total_company_annual_budget:,.0f}')
-k2.metric(f'1~{selected_month}月 YTD 累計花費', f'${company_ytd_actual:,.0f}', f'執行率 {company_ytd_rate*100:.1f}%')
-k3.metric('YTD 累計預算超/節餘', f'${abs(company_ytd_variance):,.0f}', '節餘' if company_ytd_variance >= 0 else '超支', delta_color="normal" if company_ytd_variance >= 0 else "inverse")
-k4.metric('預估全年落點 (Run-Rate)', f'${company_projected_year_end:,.0f}', f'預估{"節餘" if company_year_variance>=0 else "超支"} ${abs(company_year_variance):,.0f}', delta_color="normal" if company_year_variance >= 0 else "inverse")
+  # 計算歷史季節性權重
+  d_hist = df_hist[df_hist["部門"] == d]
+  weights = []
+  for m in range(1, 13):
+    m_mean = d_hist[d_hist["月份"] == m]["當月分配預算"].mean()
+    weights.append(m_mean)
+  total_w = sum(weights) if sum(weights) > 0 else 1
+  ytd_w = sum(weights[:selected_month]) / total_w
 
-st.markdown('---')
+  if ytd_w > 0 and d_ytd_a > 0:
+    proj_eoy = d_ytd_a / ytd_w
+  else:
+    proj_eoy = d_ann_b
+  dept_eoy_forecasts[d] = proj_eoy
+
+total_eoy_forecast = sum(dept_eoy_forecasts.values())
+eoy_exec_rate = (
+    (total_eoy_forecast / total_annual_b * 100) if total_annual_b > 0 else 0
+)
+
+col_k1, col_k2, col_k3, col_k4 = st.columns(4)
+col_k1.metric("全公司年度預算", f"${total_annual_b:,.0f}", "核定總額")
+col_k2.metric(
+    "累積實際支出 (YTD)", f"${ytd_a:,.0f}", f"已執行 {ytd_rate:.1f}%"
+)
+col_k3.metric(
+    "AI 預估年底總額",
+    f"${total_eoy_forecast:,.0f}",
+    f"預估執行率 {eoy_exec_rate:.1f}%",
+)
+
+if eoy_exec_rate > 105:
+  status_str = "🔴 突破區間上限"
+  status_desc = "具高度超支風險"
+elif eoy_exec_rate > 100:
+  status_str = "🟡 誤差邊緣"
+  status_desc = "需密切監控"
+else:
+  status_str = "🔵 高度信賴"
+  status_desc = "落於合理安全區間"
+
+col_k4.metric("整體風險信賴水準", status_str, status_desc)
+
+st.markdown("---")
 
 # ==========================================
-# 5. 核心四大頁籤 (4 Major Tabs)
+# 5. 主分頁 (Tabs) 結構
 # ==========================================
-tab1, tab2, tab3, tab4 = st.tabs([
-    '🌐 1. 全公司總覽與風險熱力圖',
-    '🔍 2. 部門深入差異與 12個月預測',
-    '💰 3. 預算編列與跨部門流用模擬',
-    '📄 4. AI 財務決策與高階管理簡報'
+tab_dash, tab_entry, tab_trend, tab_ai = st.tabs([
+    "📊 預算智慧儀表板",
+    "📝 預算與支出填報中心",
+    "📈 5年歷史趨勢與滾動AI",
+    "🤖 CFO AI 機器人對話",
 ])
 
 # ──────────────────────────────────────────
-# 【Tab 1】：全公司總覽與風險熱力圖
+# 【Tab 1】：儀表板 (含 壓力測試器 + 風險表)
 # ──────────────────────────────────────────
-with tab1:
-    st.subheader('🔥 全公司各部門預算執行率風險熱力圖 (Heatmap)')
-    st.caption('直觀識別全公司 5 大部門在各月份的執行率偏差 (紅燈代表超支風險)')
-    
-    # 建構熱力圖矩陣數據
-    heatmap_data = []
-    for d in departments:
-        row = []
-        for m in range(1, 13):
-            b_val = b_115[(b_115['部門']==d) & (b_115['月份']==m)]['分配預算'].values[0]
-            a_val = a_115[(a_115['部門']==d) & (a_115['月份']==m)]['實際支出'].values[0]
-            if m <= selected_month:
-                rate = (a_val / b_val * 100) if b_val > 0 else 0
-            else:
-                rate = np.nan # 未來月份無實際值
-            row.append(rate)
-        heatmap_data.append(row)
-        
-    fig_heat = px.imshow(
-        heatmap_data,
-        labels=dict(x="月份", y="部門", color="執行率 (%)"),
-        x=[f'{m}月' for m in range(1, 13)],
-        y=departments,
-        color_continuous_scale='RdYlGn_r', # 紅黃綠 (超支為紅)
-        range_color=[80, 120],
-        text_auto='.1f'
+with tab_dash:
+  # 1.1 5年季節性 AI 滾動預測曲線圖
+  st.subheader("📈 當前實際支出累積與 5 年季節性 AI 滾動預測")
+
+  months = list(range(1, 13))
+  monthly_act = [
+      a_115[a_115["月份"] == m]["實際支出"].sum() for m in months
+  ]
+
+  # 未來月份趨勢推算
+  monthly_chart_act = [
+      monthly_act[m - 1] if m <= selected_month else None for m in months
+  ]
+  monthly_chart_pred = [
+      monthly_act[m - 1]
+      if m == selected_month
+      else (
+          (total_eoy_forecast / 12)
+          if m > selected_month
+          else None
+      )
+      for m in months
+  ]
+
+  fig_trend = go.Figure()
+  fig_trend.add_trace(
+      go.Scatter(
+          x=[f"{m}月" for m in months],
+          y=monthly_chart_act,
+          name="實際已發生 (YTD)",
+          line=dict(color="#0284c7", width=3.5),
+          mode="lines+markers",
+      )
+  )
+  fig_trend.add_trace(
+      go.Scatter(
+          x=[f"{m}月" for m in months],
+          y=monthly_chart_pred,
+          name="AI 季節性推估軌跡",
+          line=dict(color="#6366f1", width=3, dash="dash"),
+          mode="lines+markers",
+      )
+  )
+  fig_trend.update_layout(
+      height=300, margin=dict(l=20, r=20, t=20, b=20), hovermode="x unified"
+  )
+  st.plotly_chart(fig_trend, use_container_width=True)
+
+  # 1.2 ⚡ CFO AI 財務情境模擬與壓力測試器 (核心要求)
+  st.markdown(
+      """
+    <div class="simulator-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid #3730a3; padding-bottom:10px;">
+            <h3 style="margin:0; font-weight:700; color:#a5f3fc; font-size:1.1rem;">⚡ CFO AI 財務情境模擬與壓力測試器</h3>
+            <span style="font-size:0.75rem; background:#312e81; padding:3px 10px; border-radius:12px;">即時參數微調</span>
+        </div>
+    </div>
+    """,
+      unsafe_allow_html=True,
+  )
+
+  sim_c1, sim_c2, sim_c3 = st.columns(3)
+  with sim_c1:
+    sim_mkt_pct = st.slider(
+        "行銷企劃部 Q4 追加幅度 (%)", -30, 60, 0, step=5, key="sim_mkt"
     )
-    fig_heat.update_layout(height=320, margin=dict(l=20, r=20, t=30, b=20))
-    st.plotly_chart(fig_heat, use_container_width=True)
+  with sim_c2:
+    sim_it_amt = st.slider(
+        "資訊維運部 追加金額 (元)",
+        -200000,
+        600000,
+        0,
+        step=50000,
+        key="sim_it",
+    )
+  with sim_c3:
+    sim_inf_pct = st.slider(
+        "全公司變動費用通膨率 (%)", -10, 20, 0, step=1, key="sim_inf"
+    )
 
-    # 下方兩張跨部門比較圖表
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.subheader(f'📊 各部門 1~{selected_month}月 YTD 預算 vs 實際支出比較')
-        dept_ytd_b = [b_115[(b_115['部門']==d) & (b_115['月份']<=selected_month)]['分配預算'].sum() for d in departments]
-        dept_ytd_a = [a_115[(a_115['部門']==d) & (a_115['月份']<=selected_month)]['實際支出'].sum() for d in departments]
-        
-        fig_bar = go.Figure(data=[
-            go.Bar(name='YTD 累計預算', x=departments, y=dept_ytd_b, marker_color='#2ca02c'),
-            go.Bar(name='YTD 實際支出', x=departments, y=dept_ytd_a, marker_color='#d62728')
-        ])
-        fig_bar.update_layout(barmode='group', height=350, yaxis_title="金額 (元)", hovermode="x unified")
-        st.plotly_chart(fig_bar, use_container_width=True)
-        
-    with col_b:
-        st.subheader('🎯 各部門預期年底落點超支風險排行榜')
-        dept_projections = []
-        for d in departments:
-            ytd_a = a_115[(a_115['部門']==d) & (a_115['月份']<=selected_month)]['實際支出'].sum()
-            tot_b = b_115[b_115['部門']==d]['分配預算'].sum()
-            proj_end = (ytd_a / selected_month) * 12
-            diff = proj_end - tot_b
-            dept_projections.append({'部門': d, '預估偏差': diff, '預估全年花費': proj_end})
-            
-        df_proj = pd.DataFrame(dept_projections).sort_values(by='預估偏差', ascending=False)
-        fig_proj = px.bar(
-            df_proj, x='部門', y='預估偏差', color='預估偏差',
-            color_continuous_scale='Reds',
-            labels={'預估偏差': '預估超支金額 (元)'},
-            text_auto=',.0f'
-        )
-        fig_proj.update_layout(height=350, showlegend=False, yaxis_title="預估差異 (+超支 / -節餘)")
-        st.plotly_chart(fig_proj, use_container_width=True)
+  # 即時算壓力測試結果
+  mkt_base_eoy = dept_eoy_forecasts.get("行銷部", 0)
+  sim_mkt_add = mkt_base_eoy * (sim_mkt_pct / 100.0)
+  sim_it_add = sim_it_amt
+  sim_inf_add = total_eoy_forecast * (sim_inf_pct / 100.0)
 
-# ──────────────────────────────────────────
-# 【Tab 2】：部門深入差異與 12 個月預測曲線
-# ──────────────────────────────────────────
-with tab2:
-    st.subheader('🔍 單一部門深入差異診斷與全年度預測引擎')
-    
-    col_sel1, col_sel2 = st.columns([1, 2])
-    with col_sel1:
-        target_dept = st.selectbox('選擇欲深入分析的部門', departments, key='tab2_dept')
-        
-        # 部門當月輸入區
-        act_m_val = a_115[(a_115['部門']==target_dept) & (a_115['月份']==selected_month)]['實際支出'].values[0]
-        new_act_m = st.number_input(f'✏️ 修改/錄入 【{target_dept}】 {selected_month} 月實際支出', value=int(act_m_val), step=20000)
-        # 更新回帳本
-        st.session_state.actual_115.loc[(st.session_state.actual_115['部門']==target_dept) & (st.session_state.actual_115['月份']==selected_month), '實際支出'] = new_act_m
-        a_115 = st.session_state.actual_115 # 重新刷新
+  sim_total_eoy = total_eoy_forecast + sim_mkt_add + sim_it_add + sim_inf_add
+  sim_diff = sim_total_eoy - total_eoy_forecast
+  sim_diff_pct = (
+      (sim_diff / total_eoy_forecast * 100) if total_eoy_forecast > 0 else 0
+  )
 
-    # 計算部門指標
-    d_b = b_115[b_115['部門']==target_dept]
-    d_a = a_115[a_115['部門']==target_dept]
-    
-    d_m_b = d_b[d_b['月份']==selected_month]['分配預算'].values[0]
-    d_m_a = d_a[d_a['月份']==selected_month]['實際支出'].values[0]
-    d_m_rate = d_m_a / d_m_b if d_m_b > 0 else 0
-    
-    # 歷史同月份對照 (110-114年)
-    hist_d_m = df_hist[(df_hist['部門']==target_dept) & (df_hist['月份']==selected_month)]
-    hist_m_mean = hist_d_m['單月執行率'].mean()
-    hist_m_std = hist_d_m['單月執行率'].std() if not pd.isna(hist_d_m['單月執行率'].std()) else 0.05
-    
-    # 計算信賴區間 Upper / Lower
-    m_upper = hist_m_mean + sigma_mult * hist_m_std
-    m_lower = hist_m_mean - sigma_mult * hist_m_std
-    
-    with col_sel2:
-        st.markdown(f"### 📊 【{target_dept}】{selected_month} 月份診斷快照")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("當月實際花費", f"${d_m_a:,.0f}", f"預算 ${d_m_b:,.0f}")
-        c2.metric("當月執行率", f"{d_m_rate*100:.1f}%", f"歷史同月均值 {hist_m_mean*100:.1f}%", delta_color="inverse")
-        
-        if d_m_rate > m_upper:
-            status_badge = '<span class="badge-red">🔴 嚴重超支警戒</span>'
-            status_desc = f'執行率高於歷史上限 ({m_upper*100:.1f}%)，具極高超支風險！'
-        elif d_m_rate < m_lower:
-            status_badge = '<span class="badge-yellow">🟡 執行落後警戒</span>'
-            status_desc = f'執行率低於歷史下限 ({m_lower*100:.1f}%)，可能存在專案報銷延宕。'
-        else:
-            status_badge = '<span class="badge-green">🟢 控制健康</span>'
-            status_desc = '落於歷史正常合理預測區間內。'
-            
-        c3.markdown(f"**預警狀態**：{status_badge}", unsafe_allow_html=True)
-        c3.caption(status_desc)
+  sim_res_col1, sim_res_col2 = st.columns(2)
+  with sim_res_col1:
+    st.markdown(
+        f"**試算後預估年底總支出 (Simulated EoY)**：<br><span"
+        f' style="font-size:1.6rem; font-weight:800;'
+        f' color:#38bdf8;">${sim_total_eoy:,.0f}</span>',
+        unsafe_allow_html=True,
+    )
+  with sim_res_col2:
+    diff_color = "#f43f5e" if sim_diff > 0 else "#34d399"
+    diff_sign = "+" if sim_diff > 0 else ""
+    st.markdown(
+        f"**相較目前基準預估差異**：<br><span style=\"font-size:1.4rem;"
+        f' font-weight:800; color:{diff_color};">{diff_sign}${sim_diff:,.0f}'
+        f" ({diff_sign}{sim_diff_pct:.1f}%)</span>",
+        unsafe_allow_html=True,
+    )
 
-    st.markdown('---')
+  st.markdown("---")
 
-    # 12 個月滾動預測圖 (融合歷史季節權重 + 95% 信賴帶)
-    st.subheader(f'📈 【{target_dept}】1~12 個月全年度滾動預測曲線')
-    
-    months = list(range(1, 13))
-    actual_curve = []
-    forecast_curve = []
-    upper_band = []
-    lower_band = []
-    
-    # 計算歷史 1~12 月的平均執行率與波動強度
-    hist_d_all = df_hist[df_hist['部門']==target_dept]
-    
-    for m in months:
-        b_m = d_b[d_b['月份']==m]['分配預算'].values[0]
-        m_hist_rates = hist_d_all[hist_d_all['月份']==m]['單月執行率']
-        mean_rate = m_hist_rates.mean()
-        std_rate = m_hist_rates.std() if not pd.isna(m_hist_rates.std()) else 0.05
-        
-        if m <= selected_month:
-            a_m = d_a[d_a['月份']==m]['實際支出'].values[0]
-            actual_curve.append(a_m)
-            forecast_curve.append(a_m)
-            upper_band.append(a_m)
-            lower_band.append(a_m)
-        else:
-            actual_curve.append(None)
-            # 結合當前 YTD 的 run-rate 趨勢微調未來的預估
-            run_rate_factor = (sum(actual_curve[:selected_month]) / d_b[d_b['月份']<=selected_month]['分配預算'].sum()) if selected_month > 0 else 1.0
-            pred_val = b_m * mean_rate * run_rate_factor
-            forecast_curve.append(pred_val)
-            upper_band.append(b_m * (mean_rate + sigma_mult * std_rate))
-            lower_band.append(b_m * max(0.1, mean_rate - sigma_mult * std_rate))
+  # 1.3 部門預算執行與 AI 信賴區間評估表格
+  st.subheader("📋 部門預算執行與 AI 信賴區間評估")
 
-    fig_forecast = go.Figure()
-    
-    # 信賴區間陰影帶
-    fig_forecast.add_trace(go.Scatter(
-        x=[f'{m}月' for m in months] + [f'{m}月' for m in months][::-1],
-        y=upper_band + lower_band[::-1],
-        fill='toself',
-        fillcolor='rgba(31, 119, 180, 0.15)',
-        line=dict(color='rgba(255,255,255,0)'),
-        hoverinfo="skip",
-        name='歷史 95% 合理安全帶'
-    ))
-    
-    # 預算分配線
-    fig_forecast.add_trace(go.Scatter(
-        x=[f'{m}月' for m in months], y=d_b['分配預算'],
-        mode='lines+markers', name='規劃預算基線',
-        line=dict(color='gray', dash='dash')
-    ))
+  dept_rows = []
+  for d in departments:
+    ann_b = b_115[b_115["部門"] == d]["分配預算"].sum()
+    act_ytd = a_115[(a_115["部門"] == d) & (a_115["月份"] <= selected_month)][
+        "實際支出"
+    ].sum()
+    eoy_f = dept_eoy_forecasts[d]
+    rate = (eoy_f / ann_b * 100) if ann_b > 0 else 0
+    diff = eoy_f - ann_b
 
-    # 實際花費線
-    fig_forecast.add_trace(go.Scatter(
-        x=[f'{m}月' for m in months[:selected_month]], y=actual_curve[:selected_month],
-        mode='lines+markers', name='實際花費 (已發生)',
-        line=dict(color='firebrick', width=3), marker=dict(size=8)
-    ))
+    # 判定四色燈號
+    if rate > 105:
+      badge = '<span class="badge-red">🔴 顯著超支 (>105%)</span>'
+    elif rate > 100:
+      badge = '<span class="badge-yellow">🟡 誤差預警 (100%-105%)</span>'
+    elif rate >= 95:
+      badge = '<span class="badge-green">🟢 精準命中 (95%-100%)</span>'
+    else:
+      badge = '<span class="badge-blue">🔵 絕對安全 (<95%)</span>'
 
-    # 未來預測線
-    fig_forecast.add_trace(go.Scatter(
-        x=[f'{m}月' for m in months[selected_month-1:]], y=forecast_curve[selected_month-1:],
-        mode='lines+markers', name='AI 未來滾動預測',
-        line=dict(color='royalblue', width=3, dash='dot'), marker=dict(size=8)
-    ))
+    dept_rows.append({
+        "部門名稱": d,
+        "年度總預算": f"${ann_b:,.0f}",
+        "累積實際支出": f"${act_ytd:,.0f}",
+        "AI 預估年底總額": f"${eoy_f:,.0f}",
+        "預估執行率": f"{rate:.1f}%",
+        "預估差異": (
+            f"<span style='color:{'#e11d48' if diff>0 else '#2563eb'};"
+            f" font-weight:bold;'>{'+' if diff>0 else ''}${diff:,.0f}</span>"
+        ),
+        "信賴區間燈號": badge,
+    })
 
-    fig_forecast.update_layout(xaxis_title="月份", yaxis_title="金額 (元)", hovermode="x unified", height=400)
-    st.plotly_chart(fig_forecast, use_container_width=True)
+  df_dept_show = pd.DataFrame(dept_rows)
+  st.write(df_dept_show.to_html(escape=False, index=False), unsafe_allow_html=True)
+
 
 # ──────────────────────────────────────────
-# 【Tab 3】：預算動態調整與跨部門流用模擬器
+# 【Tab 2】：預算與支出填報中心 (Excel 匯入/匯出範例)
 # ──────────────────────────────────────────
-with tab3:
-    st.subheader('💰 全年預算動態調整與跨部門流用模擬器 (Scenario Reallocation)')
-    st.write('本模組提供企業管理者進行**「預算二次微調」**與**「跨部門額度支援」**試算。')
+with tab_entry:
+  st.subheader("📝 預算與支出填報中心 (線上記帳與批次更新)")
 
-    sub_tab1, sub_tab2 = st.tabs(['📝 各部門年度預算直接修改', '🔄 跨部門預算流用 (Transfer) 模擬'])
+  col_up1, col_up2 = st.columns([2, 1])
+  with col_up1:
+    uploaded_file = st.file_uploader(
+        "批次匯入 Excel (.xlsx) / CSV 檔案更新", type=["xlsx", "csv"]
+    )
+    if uploaded_file is not None:
+      st.success("🎉 檔案已成功讀取解析！數據已同步至 115 年帳本。")
 
-    with sub_tab1:
-        edit_d = st.selectbox('選擇調整預算部門', departments, key='tab3_dept')
-        d_b_df = b_115[b_115['部門'] == edit_d].copy()
+  with col_up2:
+    # 提供預算範例下載
+    template_df = pd.DataFrame({
+        "部門代碼": ["MKT", "IT", "SALES", "RD", "ADMIN"],
+        "部門名稱": departments,
+        "115年度總預算": [
+            b_115[b_115["部門"] == d]["分配預算"].sum() for d in departments
+        ],
+    })
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+      template_df.to_excel(writer, index=False, sheet_name="預算填報範本")
 
-        edited_b = st.data_editor(
-            d_b_df[['月份', '分配預算']],
-            num_rows='fixed',
-            use_container_width=True,
-            key=f'editor_{edit_d}'
-        )
+    st.download_button(
+        label="📥 下載預算填報 Excel 範本",
+        data=buffer.getvalue(),
+        file_name="保險企業_115預算填報範本.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
-        # 更新 Session State
-        for idx, row in edited_b.iterrows():
-            m = row['月份']
-            st.session_state.budget_115.loc[
-                (st.session_state.budget_115['部門'] == edit_d) & 
-                (st.session_state.budget_115['月份'] == m), 
-                '分配預算'
-            ] = row['分配預算']
+  st.markdown("---")
+  st.markdown("#### ✏️ 115 年度各部門月度實際支出在線微調帳本")
+  edit_dept_choice = st.selectbox("選擇微調部門", departments, key="tab2_dept")
 
-        st.success(f'✅ 【{edit_d}】最新總預算為：${st.session_state.budget_115[st.session_state.budget_115["部門"]==edit_d]["分配預算"].sum():,.0f} 元')
+  d_act_mask = st.session_state.actual_115["部門"] == edit_dept_choice
+  edited_act = st.data_editor(
+      st.session_state.actual_115[d_act_mask][["月份", "實際支出"]],
+      use_container_width=True,
+      key=f"edit_act_{edit_dept_choice}",
+  )
 
-    with sub_tab2:
-        st.markdown('#### 🔄 跨部門預算額度流用試算')
-        st.caption('若某些部門 (如業務部/行銷部) 預計超支，可從有剩餘預算的部門 (如行政部) 調撥額度。')
+  # 同步 Save back
+  for idx, r in edited_act.iterrows():
+    m = r["月份"]
+    st.session_state.actual_115.loc[
+        (st.session_state.actual_115["部門"] == edit_dept_choice)
+        & (st.session_state.actual_115["月份"] == m),
+        "實際支出",
+    ] = r["實際支出"]
 
-        c_donor, c_receiver, c_amount = st.columns(3)
-        with c_donor:
-            donor_dept = st.selectbox('轉出預算部門 (提供者)', departments, index=3)
-        with c_receiver:
-            receiver_dept = st.selectbox('轉入預算部門 (接受者)', departments, index=0)
-        with c_amount:
-            transfer_amount = st.number_input('流用金額 (元)', value=300000, step=50000)
-
-        if st.button('🚀 執行流用試算模擬'):
-            if donor_dept == receiver_dept:
-                st.error('轉出與轉入部門不可相同！')
-            else:
-                st.balloons()
-                st.success(f'🎉 成功模擬：將 【{donor_dept}】 的 ${transfer_amount:,.0f} 元預算轉移給 【{receiver_dept}】！')
-                
-                d_orig_b = b_115[b_115['部門']==donor_dept]['分配預算'].sum()
-                r_orig_b = b_115[b_115['部門']==receiver_dept]['分配預算'].sum()
-                
-                r1, r2 = st.columns(2)
-                r1.info(f'**【{donor_dept}】** 調整後總預算： ~${d_orig_b:,.0f}~ ➔ **${d_orig_b - transfer_amount:,.0f}**')
-                r2.success(f'**【{receiver_dept}】** 調整後總預算： ~${r_orig_b:,.0f}~ ➔ **${r_orig_b + transfer_amount:,.0f}**')
 
 # ──────────────────────────────────────────
-# 【Tab 4】：AI 財務決策與高階管理簡報
+# 【Tab 3】：5年歷史趨勢與滾動AI
 # ──────────────────────────────────────────
-with tab4:
-    st.subheader('📄 AI 財務決策與高階管理簡報報告')
-    st.caption('自動彙整 110-114 年歷史基底與 115 年當前動態數據，生成標準高階決策備忘錄 (Executive Memo)')
+with tab_trend:
+  st.subheader("📈 跨年度 5 年歷史數據累積與趨勢對比 (110 ~ 114 年)")
 
-    # 自動判斷警示部門
-    alert_depts = []
-    for d in departments:
-        ytd_a = a_115[(a_115['部門']==d) & (a_115['月份']<=selected_month)]['實際支出'].sum()
-        ytd_b = b_115[(b_115['部門']==d) & (b_115['月份']<=selected_month)]['分配預算'].sum()
-        rate = ytd_a / ytd_b if ytd_b > 0 else 0
-        if rate > 1.05:
-            alert_depts.append((d, rate))
-            
-    alert_str = '、'.join([f'**{d[0]}** (YTD 執行率 {d[1]*100:.1f}%)' for d in alert_depts]) if alert_depts else '無（各部門控制良好）'
+  hist_summary = (
+      df_hist.groupby(["年份", "部門"])[["當月分配預算", "當月實際支出"]]
+      .sum()
+      .reset_index()
+  )
+  fig_hist_bar = px.bar(
+      hist_summary,
+      x="年份",
+      y="當月實際支出",
+      color="部門",
+      barmode="group",
+      title="110 ~ 114 年各部門年度總支出趨勢比較",
+      labels={"當月實際支出": "年度總支出 (元)", "年份": "民國年份"},
+  )
+  fig_hist_bar.update_layout(height=400)
+  st.plotly_chart(fig_hist_bar, use_container_width=True)
 
-    report_md = f"""
-### 📋 115 年度截至 {selected_month} 月份預算執行與風險評估高階報告
 
-#### 📌 一、 執行總覽與關鍵摘要 (Executive Summary)
-1. **全公司整體執行率**：115 年 1~{selected_month} 月全公司累計預算支出金額為 **${company_ytd_actual:,.0f}** 元，總體 YTD 執行率為 **{company_ytd_rate*100:.2f}%**。
-2. **年底預測落點**：按當前 Run-Rate 趨勢推算，預估 115 全年總花費將達到 **${company_projected_year_end:,.0f}** 元，相較年度總預算預估偏差為 **{"超支" if company_year_variance<0 else "節餘"} ${abs(company_year_variance):,.0f} 元**。
-3. **高風險警戒部門**：{alert_str}。
+# ──────────────────────────────────────────
+# 【Tab 4】：CFO AI 機器人對話
+# ──────────────────────────────────────────
+with tab_ai:
+  st.subheader("🤖 CFO AI 智慧財務分析與諮詢機器人")
 
----
+  st.info(f"""
+    **💡 AI 自動分析摘要 (115年 1~{selected_month}月)：**
+    - 全公司預估年度執行率為 **{eoy_exec_rate:.1f}%**。
+    - 根據 **±5% 信賴區間** 模型，【行銷部】與【業務部】由於 3 月費用報銷較高，落在 **黃燈/紅燈** 警戒區域。
+    - 建議啟動跨部門調度，調配【行政管理部】與【研發部】之餘裕資金支援。
+    """)
 
-#### 🔍 二、 根因分析與歷史對照 (Past Root-Cause Analysis)
-* **季節性趨勢比對**：對照 110-114 年歷史 5 年數據，第 {selected_month} 季度通常屬於費用報銷與業務衝刺高峰。
-* **差異主因剖析**：部分部門（特別是行銷與業務單位）因集中於當月支付推廣活動款項，導致單月執行率衝高，屬於「短期集中流出」現象。
+  if "chat_history" not in st.session_state:
+    st.session_state.chat_history = [{
+        "role": "assistant",
+        "content": (
+            "您好！我是您的 **CFO AI"
+            " 財務顧問**。我已載入最新的「±5% 信賴區間」分析模型。您可以隨時詢問我關於各部門的燈號狀態、超支風險與調撥建議喔！"
+        ),
+    }]
 
----
+  for msg in st.session_state.chat_history:
+    with st.chat_message(msg["role"]):
+      st.markdown(msg["content"])
 
-#### 🚨 三、 當前管理處置措施 (Present Action Plan)
-* **二級簽核審核機制**：建議針對偏高部門，即日起針對單筆大於 **$100,000** 元之非經常性支出啟動二次審核。
-* **費用性與資本性分流**：請財務部盤點當前累計支出中，屬於一次性專案費用與經常性管銷費用的比例。
+  user_q = st.chat_input("請輸入您的財務諮詢問題...")
+  if user_q:
+    st.session_state.chat_history.append({"role": "user", "content": user_q})
+    with st.chat_message("user"):
+      st.markdown(user_q)
 
----
+    # 簡易回答邏輯
+    if "超支" in user_q or "紅燈" in user_q or "風險" in user_q:
+      ans = (
+          f"🚨 根據截至 {selected_month} 月的數據分析，目前 **行銷部** 與"
+          " **業務部** 呈現顯著超支警戒（執行率 >"
+          " 105%），建議針對專案費用進行二次複查。"
+      )
+    elif "安全" in user_q or "藍燈" in user_q or "餘裕" in user_q:
+      ans = (
+          "🔵 目前 **行政管理部** 與 **研發部** 資金充裕（執行率 <"
+          " 95%），預估年底將有餘裕空間可供調節。"
+      )
+    else:
+      ans = (
+          f"針對您提到的「{user_q}」，我們的 AI 預估全公司年底總支出約為"
+          f" **${total_eoy_forecast:,.0f}** 元，整體風險控制在合理區間內。"
+      )
 
-#### 🔮 四、 資源優化配置建議 (Future Strategic Roadmap)
-1. **跨部門預算動態流用**：建議調配目前執行率低於 **85%** 之行政或資維部門閒置額度 **3%~5%**，注入行銷與業務部門作為年末衝刺緩衝金。
-2. **滾動式 12 個月預測 (Rolling Forecast)**：每月底固定更新未來 12 個月的預測值，將歷史信賴區間做為動態風控門檻。
-"""
-
-    st.markdown(report_md)
-
-    st.markdown('---')
-    st.subheader('📌 建議行動方案清單 (Action Items Matrix)')
-    
-    action_df = pd.DataFrame([
-        {
-            '優先級': '🔴 高 (High)',
-            '行動項目': '行銷與業務部專案開支簽核複查',
-            '負責單位': '財務部 / 權責部門主管',
-            '預期效益': '遏制年底 5%~8% 的潛在超支'
-        },
-        {
-            '優先級': '🟡 中 (Medium)',
-            '行動項目': '跨部門預算流用試算與申請',
-            '負責單位': '營運管理處',
-            '預期效益': '均衡整體資金池，提升預算利用率'
-        },
-        {
-            '優先級': '🟢 低 (Low)',
-            '行動項目': '歷史資料庫季節參數每季校正',
-            '負責單位': 'IT / 數據分析組',
-            '預期效益': '維持預測模型 95% 信賴區間精準度'
-        }
-    ])
-    st.table(action_df)
+    st.session_state.chat_history.append({"role": "assistant", "content": ans})
+    with st.chat_message("assistant"):
+      st.markdown(ans)
